@@ -1,5 +1,7 @@
 package pl.aplazuk.postbackend.service;
 
+import brave.Span;
+import brave.Tracer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
@@ -33,31 +35,26 @@ public class PostService {
     private final String postDataDir;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final Tracer tracer;
 
-    public PostService(@Value("${post.data-dir:}") String postDataDir, RestClient restClient, ObjectMapper objectMapper) {
+    public PostService(@Value("${post.data-dir:}") String postDataDir, RestClient restClient, ObjectMapper objectMapper, Tracer tracer) {
         this.postDataDir = postDataDir;
         this.restClient = restClient;
         this.objectMapper = objectMapper;
+        this.tracer = tracer;
     }
 
     @CircuitBreaker(name = "callPostApi", fallbackMethod = "fallbackGetAllPosts")
     public List<Post> getAllPosts() {
-           Optional<List<Post>> fetchedPosts = Optional.ofNullable(restClient.get()
-                   .uri("/posts")
-                   .retrieve()
-                   .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
-                       if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
-                           throw new NoPostFoundException("Posts has not been found", response.getStatusText());
-                       }
-                       throw new HttpClientErrorException(response.getStatusCode(), response.getStatusText());
-                   })
-                   .onStatus(HttpStatusCode::is5xxServerError, (request, response) -> {
-                       throw new PostServiceTemporaryUnavailable(response.getStatusCode(), response.getStatusText());
-                   })
-                   .body(new ParameterizedTypeReference<List<Post>>() {
-                   }));
-           fetchedPosts.ifPresent(this::savePostToFile);
-           return fetchedPosts.orElse(Collections.emptyList());
+        Span span = tracer.nextSpan().name("processing-all-posts").start();
+        try {
+            Optional<List<Post>> fetchedPosts = getAllPostsFromApi();
+
+            fetchedPosts.ifPresent(this::savePostToFile);
+            return fetchedPosts.orElse(Collections.emptyList());
+        } finally {
+            span.finish();
+        }
     }
 
     public List<Post> fallbackGetAllPosts(Throwable throwable) {
@@ -78,10 +75,35 @@ public class PostService {
         }
     }
 
-    public void savePostToFile(List<Post> fetchedPosts) {
+    private Optional<List<Post>> getAllPostsFromApi() {
+        Span span = tracer.nextSpan().name("getting-all-posts-from-api").start();
+        try {
+            Optional<List<Post>> fetchedPosts = Optional.ofNullable(restClient.get()
+                    .uri("/posts")
+                    .retrieve()
+                    .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
+                        if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
+                            throw new NoPostFoundException("Posts has not been found", response.getStatusText());
+                        }
+                        throw new HttpClientErrorException(response.getStatusCode(), response.getStatusText());
+                    })
+                    .onStatus(HttpStatusCode::is5xxServerError, (request, response) -> {
+                        throw new PostServiceTemporaryUnavailable(response.getStatusCode(), response.getStatusText());
+                    })
+                    .body(new ParameterizedTypeReference<List<Post>>() {
+                    }));
+            return fetchedPosts;
+        } finally {
+            span.finish();
+        }
+    }
+
+    private void savePostToFile(List<Post> fetchedPosts) {
+        Span span = tracer.nextSpan().name("saving-posts-to-files");
         try {
             if (!fetchedPosts.isEmpty()) {
                 createNewDirectoryIfNotExists();
+                span.start();
                 for (Post fetchedPost : fetchedPosts) {
                     objectMapper.writeValue(new File(postDataDir + fetchedPost.getId() + ".json"), fetchedPost);
                 }
@@ -89,6 +111,8 @@ public class PostService {
         } catch (IOException e) {
             LOGGER.error("Error while saving posts to file!", e);
             throw new JsonFileProcessingException("Could not save posts to file!", e);
+        } finally {
+            span.finish();
         }
     }
 
@@ -96,8 +120,8 @@ public class PostService {
         Path path = Path.of(postDataDir);
         if (!Files.exists(path)) {
             Files.createDirectory(path);
+            LOGGER.info("Directory {} created", postDataDir);
         }
-        LOGGER.info("Directory {} created", postDataDir);
     }
 
     //napisać testy jednostkowe -->done

@@ -1,5 +1,7 @@
 package pl.aplazuk.postbackend.service;
 
+import brave.Tracer;
+import brave.Tracing;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,6 +62,9 @@ class PostServiceTest {
 
     @BeforeEach()
     void setUp() {
+        Tracing braveTracing = Tracing.newBuilder().build();
+        Tracer tracer = braveTracing.tracer();
+
         mockedPosts = List.of(
                 new Post(1, 1, "t1", "b1"),
                 new Post(2, 2, "qui est esse", "b2"),
@@ -67,7 +72,7 @@ class PostServiceTest {
         );
 
         String postDataDir = tempDir.toString();
-        postService = new PostService(postDataDir, restClient, objectMapper);
+        postService = new PostService(postDataDir, restClient, objectMapper, tracer);
 
         when(restClient.get()).thenReturn(requestHeadersUriSpec);
         when(requestHeadersUriSpec.uri(eq("/posts"))).thenReturn(requestHeadersSpec);

@@ -18,4 +18,4 @@ You need to have Java 21 and Maven installed on your machine. For Zipkin running
  `http://localhost:9411/zipkin/`
 
 ### Zipkin example trace for GET /api/posts
-![img.png](img.png)
+![img.png](post-backend/img.png)

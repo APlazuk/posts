@@ -123,12 +123,4 @@ public class PostService {
             LOGGER.info("Directory {} created", postDataDir);
         }
     }
-
-    //napisać testy jednostkowe -->done
-    //spróbować sobie z profilami--> warto to dodać ze względu na bazę danych --> na tym poziomie nie ma sensu, ale trzeba pamiętać o active profiles na testach integracyjnych jeśli będzie dodana baza danych, tak aby nie naruszyc bazy prod
-    //napisać sobie cricuit breaker i ewentualnie redis --> tutaj prostą metodę na fallback wczytującą ostatni plik
-    //dodać monitoring zipkin
-    //dodac warstwę security
-    //napisać sobie metodę która pobiera te pliki za pomoca calla w kontrolerze
-    //napisać sobie metodę która zapisuje te dane do bazy danych --> zastanowić się jaka
 }
